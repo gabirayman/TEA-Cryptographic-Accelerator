@@ -1,76 +1,67 @@
-# Tiny Encryption Algorithm (TEA) Hardware Implementation
+# TEA Cryptographic Accelerator (Verilog)
 
-A synthesizable Verilog implementation of the **Tiny Encryption Algorithm (TEA)**. This core uses a state-machine-driven iterative architecture.
+A high-performance, synthesizable Verilog implementation of the Tiny Encryption Algorithm (TEA) featuring both Encryption and Decryption modes in a single unified core.
 
 ---
 
 ##  Features
 
-* **Standard TEA:** Implements the full 64-round (32 iterative cycles) TEA algorithm.
-* **Iterative Architecture:** Uses a single shared `tea_round` engine to minimize logic gate utilization.
-* **Handshake Protocol:** Robust `start`, `ready`, and `valid` interface for seamless integration with FIFO, DMA, or AXI-Stream controllers.
-* **Automated Verification:** Includes a Python-based vector generator and a self-checking testbench.
+* **Dual-Mode Support:** Unified FSM architecture handles both encryption and decryption via a mode control signal.
+* **Iterative Architecture:** Uses dedicated `tea_encrypt_round` and `tea_decrypt_round` engines to maintain mathematical clarity while sharing a central control "brain."
+* **Command Sampling:** Implements a Mode Register that samples and locks the operation mode at the start pulse, preventing mid-cycle corruption.
+* **Robust Handshake:** Standard `ready`/`valid` protocol for easy integration with CPUs (like RISC-V or ESP32) or DMA controllers.
+* **Verification Toolchain:** Integrated Python-to-Verilog workflow for automated mass-testing.
 
 ---
 
 ## 📂 Project Structure
 
-* `tea_core.v`: The top-level module containing the Finite State Machine (FSM) and control logic.
-* `tea_round.v`: Combinational logic implementing one full cycle of the TEA algorithm.
-* `tea_core_tb.v`: A comprehensive testbench that reads generated vectors and verifies hardware output.
-* `gen_vectors.py`: Python script to generate golden test vectors (Plaintext/Key/Ciphertext) for verification.
-* `run.bat`: Automation script to compile with **Icarus Verilog** and view results in **GTKWave**.
+* `tea_core.v`: Top-level FSM that manages the 32-round iterative process and handles mode-switching.
+* `tea_encrypt_round.v`: Combinational logic for the forward TEA round.
+* `tea_decrypt_round.v`: Combinational logic for the inverse (decryption) TEA round.
+* `tea_core_tb.v`: Self-checking testbench utilizing `$readmemh` for data-driven verification.
+* `gen_vectors.py`: Python "Golden Model" script that generates random test vectors and hardware parameters.
 
 ---
 
-##  Usage
+## Usage
 
-### 1. Generate Test Vectors
-Generate a `.mem` file containing random test cases. Replace `100` with your desired number of tests:
-```bash
-python gen_vectors.py 100
-```
-### 2. Run Simulation
-Execute the batch script to compile the source, run the simulation, and open the waveform viewer:
+1. **Generate the Test Suite**
 
-```bash
-run.bat
-```
+   This script generates random keys and plaintexts, calculates the golden ciphertext using a Python TEA model, and updates the Verilog parameters automatically.
+
+   ```bash
+   # Generate 100 random test cases
+   python gen_vectors.py 100
+   ```
+
+2. **Run Hardware Simulation**
+
+   The testbench performs a Symmetric Loopback Test: it encrypts the plaintext, then feeds the result back through the decrypter to verify the original data is recovered perfectly.
+
+   ```bash
+   # Compile and run via Icarus Verilog
+   run.bat
+   ```
+
 ##  Implementation Details
 
-The core utilizes the standard TEA delta constant:  
-**$\text{DELTA} = \text{32'h9E3779B9}$**
+The core operates on 64-bit blocks with a 128-bit key. It manages the state transitions below:
 
-Each `tea_round` execution performs the following Feistel-like operations:
+* `IDLE`: Core asserts `ready`. Samples plaintext, key, and mode when `start` is high.
+* `WORK`: Iterates through 32 cycles. The `sum` register is updated dynamically based on the operation mode.
+* `DONE`: Asserts `valid` for one cycle and presents the result on `ciphertext`.
+
+### Mathematical Logic (Decryption vs Encryption)
+
+In hardware, the order of operations is critical. While encryption adds the delta before the round math, decryption subtracts the delta at the end of the round to maintain mathematical symmetry.
+
+**Encryption Round:**
 
 $$v_0 = v_0 + (((v_1 \ll 4) + k_0) \oplus (v_1 + \text{sum}) \oplus ((v_1 \gg 5) + k_1))$$
 $$v_1 = v_1 + (((v_0 \ll 4) + k_2) \oplus (v_0 + \text{sum}) \oplus ((v_0 \gg 5) + k_3))$$
 
-Here is the algorithm in C:
-```bash
-#include <stdint.h>
+**Decryption Round:**
 
-void encrypt (uint32_t v[2], const uint32_t k[4]) {
-    uint32_t v0=v[0], v1=v[1], sum=0, i;           /* set up */
-    uint32_t delta=0x9E3779B9;                     /* a key schedule constant */
-    uint32_t k0=k[0], k1=k[1], k2=k[2], k3=k[3];   /* cache key */
-    for (i=0; i<32; i++) {                         /* basic cycle start */
-        sum += delta;
-        v0 += ((v1<<4) + k0) ^ (v1 + sum) ^ ((v1>>5) + k1);
-        v1 += ((v0<<4) + k2) ^ (v0 + sum) ^ ((v0>>5) + k3);
-    }                                              /* end cycle */
-    v[0]=v0; v[1]=v1;
-}
-
-void decrypt (uint32_t v[2], const uint32_t k[4]) {
-    uint32_t v0=v[0], v1=v[1], sum=0xC6EF3720, i;  /* set up; sum is (delta << 5) & 0xFFFFFFFF */
-    uint32_t delta=0x9E3779B9;                     /* a key schedule constant */
-    uint32_t k0=k[0], k1=k[1], k2=k[2], k3=k[3];   /* cache key */
-    for (i=0; i<32; i++) {                         /* basic cycle start */
-        v1 -= ((v0<<4) + k2) ^ (v0 + sum) ^ ((v0>>5) + k3);
-        v0 -= ((v1<<4) + k0) ^ (v1 + sum) ^ ((v1>>5) + k1);
-        sum -= delta;
-    }                                              /* end cycle */
-    v[0]=v0; v[1]=v1;
-}
-```
+$$v_1 = v_1 - (((v_0 \ll 4) + k_2) \oplus (v_0 + \text{sum}) \oplus ((v_0 \gg 5) + k_3))$$
+$$v_0 = v_0 - (((v_1 \ll 4) + k_0) \oplus (v_1 + \text{sum}) \oplus ((v_1 \gg 5) + k_1))$$
