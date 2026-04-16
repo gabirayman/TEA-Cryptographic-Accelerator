@@ -1,9 +1,11 @@
-`include "tea_round.v"
+`include "tea_encrypt_round.v"
+`include "tea_decrypt_round.v"
 
 module tea_core (
     input wire clk,
     input wire rst_n,
     input wire start,
+    input wire mode, // 0 for encrypt, 1 for decrypt
     input wire [63:0] plaintext,
     input wire [127:0] key,
     output reg [63:0] ciphertext,
@@ -13,6 +15,7 @@ module tea_core (
 
 // Constants and state definitions
 localparam DELTA = 32'h9E3779B9;
+localparam DELTA_TIMES_32 = 32'hC6EF3720; // DELTA * 32
 localparam STATE_IDLE = 2'b00;
 localparam STATE_WORK = 2'b01;
 localparam STATE_DONE = 2'b10;
@@ -22,23 +25,36 @@ reg [1:0] current_state, next_state;
 reg [63:0] v_reg;
 reg [31:0] sum;
 reg [5:0] count;
+reg mode_reg; // To hold the mode (encrypt/decrypt) during operation
 
 // Internal wires
-wire [31:0] next_sum = sum + DELTA;
-wire [63:0] v_next;
+// wire [31:0] next_sum = (mode_reg == 1'b0) ? (sum + DELTA) : (sum - DELTA);
+wire [31:0] sum_add_delta = sum + DELTA;
+wire [31:0] sum_sub_delta = sum - DELTA;
+wire [63:0] v_next_enc;
+wire [63:0] v_next_dec;
+// wire [63:0] v_next = (mode_reg == 1'b0) ? v_next_enc : v_next_dec;
 
-// Instantiate the tea_round module
-tea_round engine (
+// Instantiate the tea_encrypt_round module
+tea_encrypt_round enc_engine (
         .v(v_reg),
         .k(key),
-        .sum(next_sum), 
-        .out(v_next)
+        .sum(sum_add_delta), 
+        .out(v_next_enc)
+    );
+
+tea_decrypt_round dec_engine (
+        .v(v_reg),
+        .k(key),
+        .sum(sum), 
+        .out(v_next_dec)
     );
 
 // block for pos edge
 always @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
         current_state <= STATE_IDLE;
+        mode_reg <= 1'b0;
         ciphertext <= 64'd0;
         v_reg <= 64'd0;
         sum <= 32'd0;
@@ -49,13 +65,28 @@ always @(posedge clk or negedge rst_n) begin
             STATE_IDLE: begin
                 if (start) begin
                     v_reg <= plaintext;
-                    sum <= 32'd0;
                     count <= 6'd0;
+                    if (mode == 1'b0) begin
+                        sum <= 32'd0; // Start with sum = 0 for encryption
+                    end else begin
+                        sum <= DELTA_TIMES_32; // Start with sum = DELTA *32 for decryption
+                    end
+                    mode_reg <= mode; // Store the mode for use in the next states
                 end
             end
             STATE_WORK: begin
-                v_reg <= v_next;
-                sum <= next_sum;
+                // v_reg <= v_next;
+                if (mode_reg == 1'b0) begin
+                    v_reg <= v_next_enc; // Update v_reg with encryption output
+                end else begin
+                    v_reg <= v_next_dec; // Update v_reg with decryption output
+                end
+                // sum <= next_sum;
+                if (mode_reg == 1'b0) begin
+                    sum <= sum_add_delta; // Increment sum for encryption
+                end else begin
+                    sum <= sum_sub_delta; // Decrement sum for decryption
+                end
                 count <= count + 1;
             end
             STATE_DONE: begin

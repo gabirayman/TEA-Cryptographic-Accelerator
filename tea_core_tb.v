@@ -6,6 +6,7 @@ module tea_core_tb();
     // Signals to connect to the TEA Core
     reg clk;
     reg rst_n;
+    reg mode; // 0 for encrypt, 1 for decrypt
     reg start;
     reg [63:0] plaintext;
     reg [127:0] key;
@@ -21,6 +22,7 @@ module tea_core_tb();
     tea_core uut (
         .clk(clk),
         .rst_n(rst_n),
+        .mode(mode),
         .start(start),
         .plaintext(plaintext),
         .key(key),
@@ -29,13 +31,14 @@ module tea_core_tb();
         .ready(ready)
     );
 
-    task run_test(input [127:0] t_key, input [63:0] t_pt, input [63:0] t_expected);
+    task run_test(input [127:0] t_key, input [63:0] t_pt, input [63:0] t_expected, input t_mode);
     begin
         wait(ready == 1);
         #10;
         @(posedge clk);
         key = t_key;
         plaintext = t_pt;
+        mode = t_mode;
         start = 1;
         @(posedge clk);
         start = 0;
@@ -67,6 +70,7 @@ module tea_core_tb();
         // Initialize signals
         clk = 0;
         rst_n = 0;
+        mode = 0;
         start = 0;
         i = 0;
         key = 128'd0;
@@ -77,15 +81,31 @@ module tea_core_tb();
         rst_n = 1;
         #20;
 
+        $display("Starting Encryption Tests...");
         for (i = 0; i < `NUM_TESTS; i = i + 1) begin
-            $display("--- Starting Test Vector %0d ---", i);
+            $display("--- Encryption Test Vector %0d ---", i+1);
             
             // Extract fields from the array index
             // Key is top 128 bits, PT is middle 64, CT is bottom 64
             run_test(
                 test_vectors[i][255:128], // Key
                 test_vectors[i][127:64],  // Plaintext
-                test_vectors[i][63:0]     // Expected Ciphertext
+                test_vectors[i][63:0],    // Expected Ciphertext
+                1'b0                      // Mode (0 for encryption)
+            );
+        end
+        
+        $display("Starting Decryption Tests...");
+        for (i = 0; i < `NUM_TESTS; i = i + 1) begin
+            $display("--- Decryption Test Vector %0d ---", i+1);
+            
+            // Extract fields from the array index
+            // Key is top 128 bits, PT is middle 64, CT is bottom 64
+            run_test(
+                test_vectors[i][255:128], // Key
+                test_vectors[i][63:0],    // Ciphertext
+                test_vectors[i][127:64],  // Expected Plaintext
+                1'b1                      // Mode (1 for decryption)
             );
         end
 
