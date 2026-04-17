@@ -40,12 +40,6 @@ A high-performance hardware implementation of the **Tiny Encryption Algorithm (T
 **Goal:** Convert the core into a professional Silicon IP block ready for SoC integration.
 
 * **Wrapper:** Develop `tea_axi_wrapper.v` to handle bus transactions.
-* **Register Mapping:**
-    * `0x00`: Control (Start, Mode)
-    * `0x04`: Status (Ready, Valid)
-    * `0x08 - 0x0C`: Input Data (Plaintext)
-    * `0x10 - 0x1C`: Key Storage
-    * `0x20 - 0x24`: Output Data (Ciphertext)
 
 ---
 
