@@ -1,9 +1,14 @@
 @echo off
-:: Delete the files and hide errors if they don't exist
-del /f /q *.vvp *.vcd 2>nul
+set /p choice="clean [1] Iterative or [2] Pipelined? "
 
-:: Print confirmation
-echo.
-echo ===============================
-echo   SUCCESS: Environment Cleaned
-echo ===============================
+if "%choice%"=="1" (
+    cd iterative
+    call clean.bat
+    cd ..
+)
+
+if "%choice%"=="2" (
+    cd pipelined
+    call clean.bat
+    cd ..
+)

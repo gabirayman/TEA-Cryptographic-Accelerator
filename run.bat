@@ -1,3 +1,14 @@
-iverilog -o tea_sim.vvp tea_core_tb.v tea_core.v
-vvp tea_sim.vvp
-gtkwave tea_waves.vcd
+@echo off
+set /p choice="Run [1] Iterative or [2] Pipelined? "
+
+if "%choice%"=="1" (
+    cd iterative
+    call run.bat
+    cd ..
+)
+
+if "%choice%"=="2" (
+    cd pipelined
+    call run.bat
+    cd ..
+)
