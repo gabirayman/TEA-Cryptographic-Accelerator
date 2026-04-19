@@ -30,6 +30,12 @@ A high-performance design that unrolls the algorithm into a 5-stage pipeline (8 
 *   **Throughput:** 1 block per cycle (steady state)
     
 *   **Area:** Higher (921cells with yosys synthesis)
+
+### **Waveform Iterative
+![GTKWave Iterative Encryption](docs/iterative_waves.png)
+
+### **Waveform Pipelined
+![GTKWave Pipelined Encryption](docs/pipelined_waves.png)
     
 
 Throughput vs Footprint Tradeoff
